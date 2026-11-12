@@ -12,4 +12,4 @@ Tracks whether New York hospitals' financial assistance materials comply with st
 | Data | [`audit/tracker.csv`](audit/tracker.csv), one row per hospital, with **Last Updated** and **Last Checked** dates |
 | History | [`audit/changelog.csv`](audit/changelog.csv) lists every field change (old → new), and every run is one commit |
 
-How it works, the grading rules and the scripts are documented in [`audit/README.md`](audit/README.md).
+Refer to the following for documentation on the agent: [`audit/README.md`](audit/README.md).
