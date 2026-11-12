@@ -13,5 +13,3 @@ Tracks whether New York hospitals' financial assistance materials comply with st
 | History | [`audit/changelog.csv`](audit/changelog.csv) lists every field change (old → new), and every run is one commit |
 
 How it works, the grading rules and the scripts are documented in [`audit/README.md`](audit/README.md).
-
-Hospital list and links come from [bguzell/h-compliance-tracker](https://github.com/bguzell/h-compliance-tracker).
