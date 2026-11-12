@@ -67,6 +67,33 @@ td.num{font-variant-numeric:tabular-nums;white-space:nowrap}
 .more{margin-top:10px}
 button.link{background:none;border:none;color:var(--accent);cursor:pointer;font:inherit;padding:0}
 footer{margin-top:28px;color:var(--muted);font-size:12.5px}
+button.kpi{font:inherit;color:inherit;text-align:left;cursor:pointer;width:100%}
+.kpi:hover,.kpi:focus-visible,.bar:hover,.bar:focus-visible{border-color:var(--accent);outline:none}
+.kpi .go,.sec-go{font-size:12px;color:var(--accent);margin-top:6px}
+button.bar{background:none;border:1px solid transparent;border-radius:6px;padding:3px 4px;margin:0 -5px;font:inherit;color:inherit;text-align:left;cursor:pointer;width:calc(100% + 10px)}
+.bar:hover .fill{filter:brightness(1.12)}
+.stack button{border:none;padding:0;height:100%;cursor:pointer}
+.stack button:hover,.stack button:focus-visible{filter:brightness(1.15);outline:none}
+.legend button{background:none;border:none;padding:0;font:inherit;color:inherit;cursor:pointer;text-decoration:underline dotted;text-underline-offset:3px}
+tr.rowlink{cursor:pointer}
+tr.rowlink:hover td,tr.rowlink:focus-visible td{background:var(--chip);outline:none}
+button.hlink{background:none;border:none;padding:0;font:inherit;color:var(--accent);cursor:pointer;text-align:left;text-decoration:underline;text-underline-offset:2px}
+a.ext{font-size:12px;margin-left:6px;text-decoration:none}
+dialog{border:1px solid var(--line);border-radius:14px;padding:0;background:var(--card);color:var(--ink);width:min(960px,calc(100% - 24px));max-height:88vh;box-shadow:0 20px 60px rgba(0,0,0,.25)}
+dialog::backdrop{background:rgba(20,20,18,.45)}
+.dhead{display:flex;gap:12px;align-items:flex-start;justify-content:space-between;padding:18px 20px 10px;border-bottom:1px solid var(--line);position:sticky;top:0;background:var(--card);z-index:2}
+.dhead h3{margin:0;font-size:18px}
+.dhead p{margin:2px 0 0;color:var(--muted);font-size:13.5px}
+.dbody{padding:14px 20px 20px;overflow:auto;max-height:calc(88vh - 90px)}
+.dbtns{display:flex;gap:8px;flex-shrink:0}
+.dbtns button{border:1px solid var(--line);background:var(--chip);color:var(--ink);border-radius:8px;padding:5px 11px;font:inherit;font-size:13px;cursor:pointer}
+.kv{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-bottom:14px}
+.kv div{background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:8px 10px;font-size:13px}
+.kv b{display:block;font-size:15px}
+.notes dt{font-weight:600;font-size:13px;margin-top:10px}
+.notes dd{margin:2px 0 0;color:var(--muted);font-size:13px;white-space:pre-wrap;word-break:break-word}
+.p-none{background:var(--chip);color:var(--muted)}
+.chg{font-size:11.5px;color:var(--warn);font-weight:600;margin-left:6px}
 </style>
 </head>
 <body>
@@ -83,6 +110,13 @@ footer{margin-top:28px;color:var(--muted);font-size:12.5px}
 
   <div id="app"></div>
 </main>
+<dialog id="drill" aria-labelledby="dtitle">
+  <div class="dhead">
+    <div><h3 id="dtitle"></h3><p id="dsub"></p></div>
+    <div class="dbtns"><button id="dback" hidden>← Back</button><button id="dclose">Close</button></div>
+  </div>
+  <div class="dbody" id="dbody"></div>
+</dialog>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
 <script>
@@ -125,10 +159,10 @@ async function load(path){
 }
 
 function bars(items, total, color){
-  return '<div class="bars">' + items.map(([lab,n,title]) =>
-    `<div class="bar" title="${esc(title||'')}"><span class="lab">${esc(lab)}</span>
+  return '<div class="bars">' + items.map(([lab,n,title,key]) =>
+    `<button class="bar" data-drill="${esc(key)}" title="${esc(title||'')} — click to see the hospitals"><span class="lab">${esc(lab)}</span>
       <span class="track"><span class="fill" style="width:${pct(n,total)}%;${color?`background:${color}`:''}"></span></span>
-      <span class="num">${n}</span></div>`).join('') + '</div>';
+      <span class="num">${n}</span></button>`).join('') + '</div>';
 }
 
 function render(rows, log){
@@ -159,45 +193,59 @@ function render(rows, log){
     return {name, hs, checked, updated, ago: daysAgo(checked), missing: hs.filter(h => h.missing.length).length};
   }).sort((a,b) => (a.checked||'').localeCompare(b.checked||'') || b.missing - a.missing || a.name.localeCompare(b.name));
 
-  const byReason = Object.keys(REASONS).map(k => [REASONS[k].label, rows.filter(r => r.reason === k).length, REASONS[k].help]);
-  const byField = GRADED.map(c => [FIELD[c], rows.filter(r => r.missing.includes(c)).length, c]).sort((a,b) => b[1]-a[1]);
+  const byReason = Object.keys(REASONS).map(k => [REASONS[k].label, rows.filter(r => r.reason === k).length, REASONS[k].help, 'reason:'+k]);
+  const byField = GRADED.map(c => [FIELD[c], rows.filter(r => r.missing.includes(c)).length, 'Column '+c, 'field:'+c]).sort((a,b) => b[1]-a[1]);
   const recent = log.filter(e => e.new_value !== '(blank)').sort((a,b) => b.date.localeCompare(a.date) || b.run_id.localeCompare(a.run_id));
   const latestRun = recent[0]?.run_id;
+  rows.forEach(r => { byId[r.hospital_id] = r; });
+  const byMissing = (a,b) => b.missing.length - a.missing.length || a.A.localeCompare(b.A);
+  Object.assign(DRILL, {
+    complete:{title:'Fully verified hospitals', sub:'All 17 fields were read from posted documents. These grades are final.', rows:[...complete].sort((a,b)=>a.A.localeCompare(b.A))},
+    needs:{title:'Hospitals that need a human check', sub:'At least one field is blank because a document couldn\'t be read.', rows:rows.filter(r=>r.missing.length).sort(byMissing)},
+    partial:{title:'Hospitals with some data missing', sub:'1–12 of 17 fields blank.', rows:partial.sort(byMissing)},
+    nodata:{title:'Hospitals with little or no data', sub:'13 or more of 17 fields blank — usually the whole site is blocked.', rows:nodata.sort(byMissing)},
+    cells:{title:'Missing data points by hospital', sub:`${missingCells.toLocaleString()} blank fields across ${rows.filter(r=>r.missing.length).length} hospitals.`, rows:rows.filter(r=>r.missing.length).sort(byMissing)},
+    flagged:{title:'Agent judgement calls to confirm', sub:'The agent noted these findings as judgement calls.', rows:flagged, note:true},
+    stale:{title:`Not checked in ${STALE_DAYS}+ days`, sub:'These are first in line for the next agent runs.', rows:stale.sort((a,b)=>(a.BA||'').localeCompare(b.BA||''))},
+  });
+  Object.keys(REASONS).forEach(k => DRILL['reason:'+k] = {title:REASONS[k].label, sub:REASONS[k].help, rows:rows.filter(r=>r.reason===k).sort(byMissing)});
+  GRADED.forEach(c => DRILL['field:'+c] = {title:`Blank: ${FIELD[c]}`, sub:`Hospitals where “${FIELD[c]}” (column ${c}) couldn't be verified.`, rows:rows.filter(r=>r.missing.includes(c)).sort(byMissing)});
+  systems.forEach((s,i) => DRILL['sys:'+i] = {title:s.name, sub:`${s.hs.length} hospitals · oldest check ${fmtDate(s.checked)} · last data change ${fmtDate(s.updated)}`, rows:[...s.hs].sort((a,b)=>a.A.localeCompare(b.A))});
 
   document.getElementById('app').innerHTML = `
   <div class="kpis">
-    <div class="kpi"><div class="l">Fully verified</div><div class="v" style="color:var(--good)">${complete.length}</div><div class="n">${pct(complete.length,n)}% of ${n} hospitals</div></div>
-    <div class="kpi"><div class="l">Need a human check</div><div class="v" style="color:var(--warn)">${n - complete.length}</div><div class="n">${nodata.length} with almost no data</div></div>
-    <div class="kpi"><div class="l">Missing data points</div><div class="v">${missingCells.toLocaleString()}</div><div class="n">${pct(missingCells, n*GRADED.length)}% of ${(n*GRADED.length).toLocaleString()} graded fields</div></div>
-    <div class="kpi"><div class="l">Agent judgement calls</div><div class="v">${flagged.length}</div><div class="n">flagged for a person to confirm</div></div>
-    <div class="kpi"><div class="l">Overdue for a check</div><div class="v" style="color:${stale.length?'var(--bad)':'var(--good)'}">${stale.length}</div><div class="n">not checked in ${STALE_DAYS}+ days</div></div>
+    <button class="kpi" data-drill="complete"><div class="l">Fully verified</div><div class="v" style="color:var(--good)">${complete.length}</div><div class="n">${pct(complete.length,n)}% of ${n} hospitals</div><div class="go">View hospitals →</div></button>
+    <button class="kpi" data-drill="needs"><div class="l">Need a human check</div><div class="v" style="color:var(--warn)">${n - complete.length}</div><div class="n">${nodata.length} with almost no data</div><div class="go">View hospitals →</div></button>
+    <button class="kpi" data-drill="cells"><div class="l">Missing data points</div><div class="v">${missingCells.toLocaleString()}</div><div class="n">${pct(missingCells, n*GRADED.length)}% of ${(n*GRADED.length).toLocaleString()} graded fields</div><div class="go">View by hospital →</div></button>
+    <button class="kpi" data-drill="flagged"><div class="l">Agent judgement calls</div><div class="v">${flagged.length}</div><div class="n">flagged for a person to confirm</div><div class="go">View hospitals →</div></button>
+    <button class="kpi" data-drill="stale"><div class="l">Overdue for a check</div><div class="v" style="color:${stale.length?'var(--bad)':'var(--good)'}">${stale.length}</div><div class="n">not checked in ${STALE_DAYS}+ days</div><div class="go">View hospitals →</div></button>
   </div>
 
   <section>
     <h2>Overall data health</h2>
     <p class="sub">Each hospital is graded on ${GRADED.length} fields. A field is blank when the agent couldn't read the source document, and blanks are not counted in the grade.</p>
-    <div class="stack" role="img" aria-label="Data completeness">
-      <span style="width:${pct(complete.length,n)}%;background:var(--good)"></span>
-      <span style="width:${pct(partial.length,n)}%;background:var(--warn)"></span>
-      <span style="width:${pct(nodata.length,n)}%;background:var(--bad)"></span>
+    <div class="stack">
+      <button data-drill="complete" title="Complete — ${complete.length}" aria-label="Complete: ${complete.length} hospitals" style="width:${pct(complete.length,n)}%;background:var(--good)"></button>
+      <button data-drill="partial" title="Partly missing — ${partial.length}" aria-label="Partly missing: ${partial.length} hospitals" style="width:${pct(partial.length,n)}%;background:var(--warn)"></button>
+      <button data-drill="nodata" title="Little or no data — ${nodata.length}" aria-label="Little or no data: ${nodata.length} hospitals" style="width:${pct(nodata.length,n)}%;background:var(--bad)"></button>
     </div>
     <div class="legend">
-      <span><i class="dot" style="background:var(--good)"></i>Complete — ${complete.length}</span>
-      <span><i class="dot" style="background:var(--warn)"></i>Partly missing — ${partial.length}</span>
-      <span><i class="dot" style="background:var(--bad)"></i>Little or no data (13+ fields blank) — ${nodata.length}</span>
+      <button data-drill="complete"><i class="dot" style="background:var(--good)"></i>Complete — ${complete.length}</button>
+      <button data-drill="partial"><i class="dot" style="background:var(--warn)"></i>Partly missing — ${partial.length}</button>
+      <button data-drill="nodata"><i class="dot" style="background:var(--bad)"></i>Little or no data (13+ fields blank) — ${nodata.length}</button>
     </div>
   </section>
 
   <div class="grid2">
     <section>
       <h2>Why data is missing</h2>
-      <p class="sub">Hospitals with at least one blank field, by cause. Hover a bar for details.</p>
+      <p class="sub">Hospitals with at least one blank field, by cause. Click a bar to see the hospitals.</p>
       ${bars(byReason, n - complete.length)}
     </section>
     <section>
       <h2>Which fields are missing</h2>
-      <p class="sub">Hospitals with this field blank.</p>
-      <div class="scroll" style="max-height:330px">${bars(byField.map(([l,c,k]) => [l,c,k]), n)}</div>
+      <p class="sub">Hospitals with this field blank. Click a bar to see them.</p>
+      <div class="scroll" style="max-height:330px">${bars(byField, n)}</div>
     </section>
   </div>
 
@@ -222,7 +270,7 @@ function render(rows, log){
     ${flagged.length ? `<div class="tablewrap scroll"><table>
       <thead><tr><th>Hospital</th><th>Grade</th><th>Agent note</th><th>Updated</th></tr></thead>
       <tbody>${flagged.sort((a,b)=> (b.AZ||'').localeCompare(a.AZ||'')).map(r => `<tr>
-        <td><a href="${esc(r.N)}" target="_blank" rel="noopener">${esc(r.A)}</a><div class="small">${esc(r.M)}</div></td>
+        <td>${hosp(r)}<div class="small">${esc(r.M)}</div></td>
         <td>${gradePill(r)}</td>
         <td class="note">${esc(trim(r.AT, 320))}</td>
         <td class="num">${fmtDate(r.AZ)}</td></tr>`).join('')}</tbody></table></div>` : '<p class="empty">Nothing flagged.</p>'}
@@ -230,10 +278,10 @@ function render(rows, log){
 
   <section>
     <h2>Freshness by health system</h2>
-    <p class="sub">The agent re-checks the systems checked longest ago, about 10 per weekday run. <b>Last checked</b> is the oldest check among the system's hospitals; <b>last data change</b> is the newest. Overdue = more than ${STALE_DAYS} days.</p>
+    <p class="sub">Click a system to see its hospitals. The agent re-checks the systems checked longest ago, about 10 per weekday run. <b>Last checked</b> is the oldest check among the system's hospitals; <b>last data change</b> is the newest. Overdue = more than ${STALE_DAYS} days.</p>
     <div class="tablewrap scroll"><table>
       <thead><tr><th>Health system</th><th>Hospitals</th><th>Need check</th><th>Last checked</th><th>Last data change</th><th>Status</th></tr></thead>
-      <tbody>${systems.map((s,i) => `<tr>
+      <tbody>${systems.map((s,i) => `<tr class="rowlink" tabindex="0" data-drill="sys:${i}">
         <td>${esc(s.name)}${i < 10 ? ' <span class="small">· next run</span>' : ''}</td>
         <td class="num">${s.hs.length}</td>
         <td class="num">${s.missing}</td>
@@ -248,7 +296,7 @@ function render(rows, log){
     <p class="sub">Most recent field changes recorded by the agent${latestRun ? ` (latest run: ${esc(latestRun)})` : ''}.</p>
     ${recent.length ? `<div class="tablewrap scroll"><table>
       <thead><tr><th>Date</th><th>Hospital</th><th>Field</th><th>Old → new</th></tr></thead>
-      <tbody>${recent.slice(0,60).map(e => `<tr><td class="num">${fmtDate(e.date)}</td><td>${esc(e.hospital)}</td>
+      <tbody>${recent.slice(0,60).map(e => `<tr><td class="num">${fmtDate(e.date)}</td><td>${byId[e.hospital_id] ? hosp(byId[e.hospital_id]) : esc(e.hospital)}</td>
         <td>${esc(FIELD[e.column]||e.field)}</td><td class="num">${esc(e.old_value)} → <b>${esc(e.new_value)}</b></td></tr>`).join('')}</tbody>
     </table></div><div class="small more">Showing ${Math.min(60,recent.length)} of ${recent.length}. Full history in the change log.</div>` : '<p class="empty">No changes yet.</p>'}
   </section>
@@ -263,7 +311,7 @@ function render(rows, log){
     const q = search.value.trim().toLowerCase();
     const list = needs.filter(r => (filt === 'all' || r.reason === filt) && (!q || (r.A + ' ' + r.M).toLowerCase().includes(q)));
     body.innerHTML = list.map(r => `<tr>
-      <td><a href="${esc(r.N)}" target="_blank" rel="noopener">${esc(r.A)}</a></td>
+      <td>${hosp(r)}</td>
       <td>${esc(r.M)}</td>
       <td title="${esc(r.missing.map(c => FIELD[c]).join(', '))}"><b>${r.missing.length}</b> <span class="small">of ${GRADED.length}</span><div class="small">${esc(trim(r.missing.map(c=>FIELD[c]).join(', '), 90))}</div></td>
       <td>${esc(REASONS[r.reason].label)}</td>
@@ -280,6 +328,84 @@ function render(rows, log){
   search.addEventListener('input', draw);
   draw();
 }
+
+// ---------- drilldown ----------
+const DRILL = {}, byId = {};
+const NOTES = [['X','Time limit wording'],['AA','Inconsistencies'],['AB','Languages'],['AC','General notes'],['AF','Contact phone'],
+  ['AK','Application notes'],['AO','Summary notes'],['AQ','Other notes (service area)'],['AT','Latest agent change notes']];
+const dlg = () => document.getElementById('drill');
+let backTo = null;
+
+function hosp(r){
+  return `<button class="hlink" data-hosp="${esc(r.hospital_id)}">${esc(r.A)}</button>` +
+    (r.N ? `<a class="ext" href="${esc(r.N)}" target="_blank" rel="noopener" title="Open the hospital's financial assistance page">↗</a>` : '');
+}
+function show(title, sub, html, back){
+  document.getElementById('dtitle').textContent = title;
+  document.getElementById('dsub').textContent = sub || '';
+  document.getElementById('dbody').innerHTML = html;
+  document.getElementById('dbody').scrollTop = 0;
+  backTo = back || null;
+  document.getElementById('dback').hidden = !backTo;
+  if (!dlg().open) dlg().showModal();
+}
+function openDrill(key){
+  const d = DRILL[key]; if (!d) return;
+  const html = d.rows.length ? `<div class="tablewrap"><table>
+    <thead><tr><th>Hospital</th><th>Grade</th><th>Blank fields</th><th>Cause</th><th>Last checked</th><th>Last updated</th>${d.note?'<th>Agent note</th>':''}</tr></thead>
+    <tbody>${d.rows.map(r => `<tr>
+      <td>${hosp(r)}<div class="small">${esc(r.M)}</div></td>
+      <td>${gradePill(r)}</td>
+      <td title="${esc(r.missing.map(c=>FIELD[c]).join(', '))}">${r.missing.length ? `<b>${r.missing.length}</b> <span class="small">of ${GRADED.length}</span><div class="small">${esc(trim(r.missing.map(c=>FIELD[c]).join(', '),80))}</div>` : '<span class="small">None</span>'}</td>
+      <td>${r.reason ? esc(REASONS[r.reason].label) : '<span class="small">—</span>'}</td>
+      <td class="num">${fmtDate(r.BA)}</td>
+      <td class="num">${fmtDate(r.AZ)}</td>
+      ${d.note ? `<td class="note">${esc(trim(r.AT,260))}</td>` : ''}</tr>`).join('')}</tbody></table></div>
+    <p class="small more">${d.rows.length} hospital${d.rows.length===1?'':'s'}. Click a name for full details, or ↗ to open its financial assistance page.</p>`
+    : '<p class="empty">No hospitals in this group.</p>';
+  show(d.title, d.sub, html);
+  dlg().dataset.key = key;
+}
+function openHosp(id){
+  const r = byId[id]; if (!r) return;
+  const from = !dlg().open ? null : (backTo || dlg().dataset.key || null);
+  const changed = new Set((r.AW||'').split('; ').map(x => x.split(' ')[0]));
+  const val = (c) => {
+    let v = r[c] || '';
+    if (c === 'AI' && v && v !== 'no') v = Math.round(parseFloat(v)*100) + '%';
+    const cls = !v ? 'p-none' : (v === 'no' ? 'p-bad' : 'p-good');
+    return `<span class="pill ${cls}">${esc(v || 'not verified')}</span>`;
+  };
+  const sources = (r.AU||'').split('\n').filter(Boolean);
+  const html = `
+    <div class="kv">
+      <div>Grade<b>${gradePill(r)}</b></div>
+      <div>Blank fields<b>${r.missing.length} of ${GRADED.length}</b></div>
+      <div>Last checked<b>${fmtDate(r.BA)}</b></div>
+      <div>Last updated<b>${fmtDate(r.AZ)}</b></div>
+      <div>Previous grade<b>${esc(r.AR||'—')}</b></div>
+    </div>
+    ${r.missing.length ? `<p class="small">Why fields are blank: <b>${esc(REASONS[r.reason].label)}</b> — ${esc(REASONS[r.reason].help)}</p>` : ''}
+    <p class="small">${r.N ? `<a href="${esc(r.N)}" target="_blank" rel="noopener">Open the financial assistance page ↗</a>` : ''}</p>
+    <div class="tablewrap"><table>
+      <thead><tr><th>Field</th><th>Value</th></tr></thead>
+      <tbody>${GRADED.map(c => `<tr><td>${esc(FIELD[c])} <span class="small">(${c})</span>${changed.has(c) && r.AZ ? `<span class="chg">changed ${fmtDate(r.AZ)}</span>` : ''}</td><td>${val(c)}</td></tr>`).join('')}</tbody>
+    </table></div>
+    <dl class="notes">${NOTES.filter(([c]) => r[c] && r[c] !== 'N/A').map(([c,l]) => `<dt>${esc(l)}</dt><dd>${esc(r[c])}</dd>`).join('')}
+      ${sources.length ? `<dt>Sources read at last check</dt><dd>${sources.map(u => /^https?:/.test(u) ? `<a href="${esc(u.split(' ')[0])}" target="_blank" rel="noopener">${esc(u)}</a>` : esc(u)).join('<br>')}</dd>` : ''}
+    </dl>`;
+  show(r.A, r.M, html, from);
+}
+document.addEventListener('click', e => {
+  const h = e.target.closest('[data-hosp]'); if (h) { openHosp(h.dataset.hosp); return; }
+  const d = e.target.closest('[data-drill]'); if (d) openDrill(d.dataset.drill);
+});
+document.addEventListener('keydown', e => {
+  if ((e.key === 'Enter' || e.key === ' ') && e.target.matches('tr[data-drill]')) { e.preventDefault(); openDrill(e.target.dataset.drill); }
+});
+document.getElementById('dclose').addEventListener('click', () => dlg().close());
+document.getElementById('dback').addEventListener('click', () => backTo && openDrill(backTo));
+dlg().addEventListener('click', e => { if (e.target === dlg()) dlg().close(); });
 
 function trim(s, n){ s = String(s||'').replace(/\s+/g,' ').trim(); return s.length > n ? s.slice(0, n-1) + '…' : s; }
 function gradePill(r){
