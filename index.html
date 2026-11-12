@@ -1,0 +1,300 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>HFAL Data Health</title>
+<meta name="description" content="Health of the NY hospital financial assistance compliance data: what's missing, what needs a human, and how fresh it is.">
+<style>
+:root{
+  --bg:#f7f7f5;--card:#ffffff;--ink:#1d1d1b;--muted:#6b6b66;--line:#e4e3de;
+  --good:#2f7d4f;--warn:#b26b00;--bad:#b3382c;--accent:#2d5b9a;--chip:#efeee9;
+  --good-bg:#e6f2ea;--warn-bg:#fbf0dd;--bad-bg:#f8e3e0;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#151614;--card:#1e1f1c;--ink:#ecebe6;--muted:#a3a29b;--line:#33342f;
+    --good:#6cc08f;--warn:#e3a54a;--bad:#ec7b6e;--accent:#8db3e8;--chip:#2a2b27;
+    --good-bg:#1e3326;--warn-bg:#3a2d17;--bad-bg:#3d211d;
+  }
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+main{max-width:1180px;margin:0 auto;padding:28px 16px 64px}
+a{color:var(--accent)}
+header h1{font-size:26px;margin:0 0 4px;letter-spacing:-.01em}
+header p{margin:0;color:var(--muted)}
+.links{margin-top:8px;font-size:14px}
+.links a{margin-right:14px}
+h2{font-size:17px;margin:0 0 4px}
+.sub{color:var(--muted);font-size:13.5px;margin:0 0 14px}
+section{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:20px;margin-top:18px}
+.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(165px,1fr));gap:12px;margin-top:20px}
+.kpi{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:14px 16px}
+.kpi .v{font-size:28px;font-weight:650;font-variant-numeric:tabular-nums;line-height:1.15}
+.kpi .l{font-size:13px;color:var(--muted)}
+.kpi .n{font-size:12.5px;color:var(--muted);margin-top:2px}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:18px}
+.grid2>section{margin-top:18px}
+@media (max-width:820px){.grid2{grid-template-columns:1fr}}
+.stack{display:flex;height:14px;border-radius:7px;overflow:hidden;background:var(--chip);margin:6px 0 10px}
+.stack span{display:block;height:100%}
+.legend{display:flex;flex-wrap:wrap;gap:14px;font-size:13px;color:var(--muted)}
+.dot{display:inline-block;width:10px;height:10px;border-radius:3px;margin-right:6px;vertical-align:-1px}
+.bars{display:grid;gap:7px}
+.bar{display:grid;grid-template-columns:minmax(120px,210px) 1fr 52px;gap:10px;align-items:center;font-size:13.5px}
+.bar .track{background:var(--chip);border-radius:5px;height:10px;overflow:hidden}
+.bar .fill{display:block;height:100%;background:var(--warn);border-radius:5px}
+.bar .num{text-align:right;font-variant-numeric:tabular-nums;color:var(--muted)}
+.bar .lab{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.tools{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:12px}
+.chip{border:1px solid var(--line);background:var(--chip);color:var(--ink);border-radius:999px;padding:4px 12px;font-size:13px;cursor:pointer}
+.chip[aria-pressed="true"]{background:var(--ink);color:var(--bg);border-color:var(--ink)}
+input[type=search]{flex:1;min-width:180px;max-width:320px;border:1px solid var(--line);background:var(--card);color:var(--ink);border-radius:8px;padding:6px 10px;font:inherit;font-size:14px}
+.tablewrap{overflow-x:auto;border:1px solid var(--line);border-radius:8px}
+table{border-collapse:collapse;width:100%;font-size:13.5px}
+th,td{text-align:left;padding:8px 10px;border-bottom:1px solid var(--line);vertical-align:top}
+th{font-weight:600;color:var(--muted);font-size:12.5px;background:var(--bg);position:sticky;top:0}
+tr:last-child td{border-bottom:none}
+td.num{font-variant-numeric:tabular-nums;white-space:nowrap}
+.pill{display:inline-block;border-radius:999px;padding:1px 9px;font-size:12px;font-weight:600;white-space:nowrap}
+.p-good{background:var(--good-bg);color:var(--good)}.p-warn{background:var(--warn-bg);color:var(--warn)}.p-bad{background:var(--bad-bg);color:var(--bad)}
+.note{color:var(--muted);font-size:12.5px;max-width:520px}
+.scroll{max-height:460px;overflow-y:auto}
+.empty{color:var(--muted);font-size:14px;padding:6px 0}
+.err{background:var(--bad-bg);color:var(--bad);padding:14px;border-radius:8px}
+.small{font-size:12.5px;color:var(--muted)}
+.more{margin-top:10px}
+button.link{background:none;border:none;color:var(--accent);cursor:pointer;font:inherit;padding:0}
+footer{margin-top:28px;color:var(--muted);font-size:12.5px}
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <h1>HFAL Data Health</h1>
+    <p id="asof">Loading tracker data…</p>
+    <div class="links">
+      <a href="audit/exports/hfal-compliance-tracker.xlsx">Download spreadsheet</a>
+      <a href="https://github.com/seyounglee2001/AI-health-compliance-tracker/blob/main/audit/changelog.csv">Change log</a>
+      <a href="https://github.com/seyounglee2001/AI-health-compliance-tracker/commits/main">Agent run history</a>
+    </div>
+  </header>
+
+  <div id="app"></div>
+</main>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+<script>
+const GRADED = ['R','S','T','U','V','W','Y','Z','AD','AE','AG','AH','AI','AJ','AL','AM','AN'];
+const FIELD = {R:'Application posted',S:'Policy summary posted',T:'Policy statement posted',U:'Consistent across documents',
+  V:'Service area compliant',W:'No time limit',Y:'No asset checks',Z:'No immigration barrier',AD:'Entire Uniform Application',
+  AE:'Contact info in application',AG:'Income & discount tables',AH:'Current-year FPL',AI:'Max FPL ≥ 400%',
+  AJ:'Installments capped at 5%',AL:'Service area in summary',AM:'How to apply explained',AN:'Income levels in summary'};
+const STALE_DAYS = 14;
+const REASONS = {
+  blocked:{label:'Site or links blocked',help:'The hospital page or its file host refuses automated tools, or the document links could not be found.'},
+  docx:{label:'Word (.docx) document',help:'Posted only as a Word file, which the agent cannot read.'},
+  scan:{label:'Scanned PDF',help:'The PDF is an image with no readable text.'},
+  partial:{label:'Value not visible',help:'Document was read, but a specific value (e.g. an income table shown as an image) was not.'}
+};
+const REVIEW_RE = /judg(e)?ment call|closest call|ambiguous|reviewer:|worth a (human )?look|verify (visually|manually)/i;
+
+const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const daysAgo = d => d ? Math.floor((Date.now() - new Date(d + 'T12:00:00')) / 864e5) : null;
+const fmtDate = d => d ? new Date(d + 'T12:00:00').toLocaleDateString(undefined,{month:'short',day:'numeric',year:'numeric'}) : '—';
+const pct = (a,b) => b ? Math.round(100*a/b) : 0;
+
+function reason(r){
+  const t = ['AK','AC','AO','AT','AQ','AA','X'].map(k => r[k]||'').join(' ').toLowerCase();
+  if (/scann|image-only|no (extractable |readable )?text/.test(t)) return 'scan';
+  if (/\.docx|word (file|document|doc)|returns? (as )?binary/.test(t)) return 'docx';
+  if (/robots|block|unreachable|unable to (reach|fetch)|could ?n.?o?t (be )?(fetch|reach|open|access|found)|refus|not surfaced|never (found|surfaced)|allowlist|too long|redirect|not reachable|not discoverable|timed? ?out/.test(t)) return 'blocked';
+  return 'partial';
+}
+
+async function load(path){
+  const res = await fetch(path, {cache:'no-store'});
+  if (!res.ok) throw new Error(path + ': HTTP ' + res.status);
+  const parsed = Papa.parse(await res.text(), {header:true, skipEmptyLines:true});
+  return parsed.data.map(row => {
+    const o = {};
+    for (const [k,v] of Object.entries(row)) o[k.includes(' ') && /^[A-Z]{1,2} /.test(k) ? k.split(' ')[0] : k] = (v ?? '').trim();
+    return o;
+  });
+}
+
+function bars(items, total, color){
+  return '<div class="bars">' + items.map(([lab,n,title]) =>
+    `<div class="bar" title="${esc(title||'')}"><span class="lab">${esc(lab)}</span>
+      <span class="track"><span class="fill" style="width:${pct(n,total)}%;${color?`background:${color}`:''}"></span></span>
+      <span class="num">${n}</span></div>`).join('') + '</div>';
+}
+
+function render(rows, log){
+  rows.forEach(r => {
+    r.missing = GRADED.filter(c => (r[c]||'') === '');
+    r.reason = r.missing.length ? reason(r) : null;
+    r.checkedAgo = daysAgo(r.BA);
+  });
+  const n = rows.length;
+  const complete = rows.filter(r => !r.missing.length);
+  const nodata = rows.filter(r => r.missing.length >= 13);
+  const partial = rows.filter(r => r.missing.length && r.missing.length < 13);
+  const missingCells = rows.reduce((s,r) => s + r.missing.length, 0);
+  const lastRun = rows.map(r => r.BA).filter(Boolean).sort().at(-1);
+  const lastChange = rows.map(r => r.AZ).filter(Boolean).sort().at(-1);
+  const stale = rows.filter(r => r.checkedAgo === null || r.checkedAgo > STALE_DAYS);
+  const flagged = rows.filter(r => REVIEW_RE.test(r.AT || ''));
+
+  document.getElementById('asof').textContent =
+    `${n} New York hospitals · last agent check ${fmtDate(lastRun)} · last data change ${fmtDate(lastChange)}`;
+
+  // systems
+  const sys = {};
+  rows.forEach(r => { (sys[r.M] ||= []).push(r); });
+  const systems = Object.entries(sys).map(([name, hs]) => {
+    const checked = hs.map(h => h.BA).filter(Boolean).sort()[0];
+    const updated = hs.map(h => h.AZ).filter(Boolean).sort().at(-1);
+    return {name, hs, checked, updated, ago: daysAgo(checked), missing: hs.filter(h => h.missing.length).length};
+  }).sort((a,b) => (a.checked||'').localeCompare(b.checked||'') || b.missing - a.missing || a.name.localeCompare(b.name));
+
+  const byReason = Object.keys(REASONS).map(k => [REASONS[k].label, rows.filter(r => r.reason === k).length, REASONS[k].help]);
+  const byField = GRADED.map(c => [FIELD[c], rows.filter(r => r.missing.includes(c)).length, c]).sort((a,b) => b[1]-a[1]);
+  const recent = log.filter(e => e.new_value !== '(blank)').sort((a,b) => b.date.localeCompare(a.date) || b.run_id.localeCompare(a.run_id));
+  const latestRun = recent[0]?.run_id;
+
+  document.getElementById('app').innerHTML = `
+  <div class="kpis">
+    <div class="kpi"><div class="l">Fully verified</div><div class="v" style="color:var(--good)">${complete.length}</div><div class="n">${pct(complete.length,n)}% of ${n} hospitals</div></div>
+    <div class="kpi"><div class="l">Need a human check</div><div class="v" style="color:var(--warn)">${n - complete.length}</div><div class="n">${nodata.length} with almost no data</div></div>
+    <div class="kpi"><div class="l">Missing data points</div><div class="v">${missingCells.toLocaleString()}</div><div class="n">${pct(missingCells, n*GRADED.length)}% of ${(n*GRADED.length).toLocaleString()} graded fields</div></div>
+    <div class="kpi"><div class="l">Agent judgement calls</div><div class="v">${flagged.length}</div><div class="n">flagged for a person to confirm</div></div>
+    <div class="kpi"><div class="l">Overdue for a check</div><div class="v" style="color:${stale.length?'var(--bad)':'var(--good)'}">${stale.length}</div><div class="n">not checked in ${STALE_DAYS}+ days</div></div>
+  </div>
+
+  <section>
+    <h2>Overall data health</h2>
+    <p class="sub">Each hospital is graded on ${GRADED.length} fields. A field is blank when the agent couldn't read the source document, and blanks are not counted in the grade.</p>
+    <div class="stack" role="img" aria-label="Data completeness">
+      <span style="width:${pct(complete.length,n)}%;background:var(--good)"></span>
+      <span style="width:${pct(partial.length,n)}%;background:var(--warn)"></span>
+      <span style="width:${pct(nodata.length,n)}%;background:var(--bad)"></span>
+    </div>
+    <div class="legend">
+      <span><i class="dot" style="background:var(--good)"></i>Complete — ${complete.length}</span>
+      <span><i class="dot" style="background:var(--warn)"></i>Partly missing — ${partial.length}</span>
+      <span><i class="dot" style="background:var(--bad)"></i>Little or no data (13+ fields blank) — ${nodata.length}</span>
+    </div>
+  </section>
+
+  <div class="grid2">
+    <section>
+      <h2>Why data is missing</h2>
+      <p class="sub">Hospitals with at least one blank field, by cause. Hover a bar for details.</p>
+      ${bars(byReason, n - complete.length)}
+    </section>
+    <section>
+      <h2>Which fields are missing</h2>
+      <p class="sub">Hospitals with this field blank.</p>
+      <div class="scroll" style="max-height:330px">${bars(byField.map(([l,c,k]) => [l,c,k]), n)}</div>
+    </section>
+  </div>
+
+  <section>
+    <h2>Needs a human check</h2>
+    <p class="sub">Open the hospital's page in a browser, read the linked documents, and fill in the blank fields. Sorted by most missing.</p>
+    <div class="tools" id="hfilters">
+      <input type="search" id="hsearch" placeholder="Search hospital or system">
+      <button class="chip" data-r="all" aria-pressed="true">All</button>
+      ${Object.entries(REASONS).map(([k,v]) => `<button class="chip" data-r="${k}" aria-pressed="false">${v.label}</button>`).join('')}
+    </div>
+    <div class="tablewrap scroll"><table>
+      <thead><tr><th>Hospital</th><th>System</th><th>Blank fields</th><th>Cause</th><th>Last checked</th><th>Grade</th></tr></thead>
+      <tbody id="hbody"></tbody>
+    </table></div>
+    <div class="small more" id="hcount"></div>
+  </section>
+
+  <section>
+    <h2>Agent judgement calls to confirm</h2>
+    <p class="sub">Hospitals where the agent's notes say a finding was a judgement call or needs a person to look.</p>
+    ${flagged.length ? `<div class="tablewrap scroll"><table>
+      <thead><tr><th>Hospital</th><th>Grade</th><th>Agent note</th><th>Updated</th></tr></thead>
+      <tbody>${flagged.sort((a,b)=> (b.AZ||'').localeCompare(a.AZ||'')).map(r => `<tr>
+        <td><a href="${esc(r.N)}" target="_blank" rel="noopener">${esc(r.A)}</a><div class="small">${esc(r.M)}</div></td>
+        <td>${gradePill(r)}</td>
+        <td class="note">${esc(trim(r.AT, 320))}</td>
+        <td class="num">${fmtDate(r.AZ)}</td></tr>`).join('')}</tbody></table></div>` : '<p class="empty">Nothing flagged.</p>'}
+  </section>
+
+  <section>
+    <h2>Freshness by health system</h2>
+    <p class="sub">The agent re-checks the systems checked longest ago, about 10 per weekday run. <b>Last checked</b> is the oldest check among the system's hospitals; <b>last data change</b> is the newest. Overdue = more than ${STALE_DAYS} days.</p>
+    <div class="tablewrap scroll"><table>
+      <thead><tr><th>Health system</th><th>Hospitals</th><th>Need check</th><th>Last checked</th><th>Last data change</th><th>Status</th></tr></thead>
+      <tbody>${systems.map((s,i) => `<tr>
+        <td>${esc(s.name)}${i < 10 ? ' <span class="small">· next run</span>' : ''}</td>
+        <td class="num">${s.hs.length}</td>
+        <td class="num">${s.missing}</td>
+        <td class="num">${fmtDate(s.checked)}${s.ago!==null?` <span class="small">(${s.ago}d)</span>`:''}</td>
+        <td class="num">${fmtDate(s.updated)}</td>
+        <td>${s.ago===null||s.ago>STALE_DAYS ? '<span class="pill p-bad">Overdue</span>' : s.ago>7 ? '<span class="pill p-warn">Due soon</span>' : '<span class="pill p-good">Fresh</span>'}</td></tr>`).join('')}</tbody>
+    </table></div>
+  </section>
+
+  <section>
+    <h2>Latest changes</h2>
+    <p class="sub">Most recent field changes recorded by the agent${latestRun ? ` (latest run: ${esc(latestRun)})` : ''}.</p>
+    ${recent.length ? `<div class="tablewrap scroll"><table>
+      <thead><tr><th>Date</th><th>Hospital</th><th>Field</th><th>Old → new</th></tr></thead>
+      <tbody>${recent.slice(0,60).map(e => `<tr><td class="num">${fmtDate(e.date)}</td><td>${esc(e.hospital)}</td>
+        <td>${esc(FIELD[e.column]||e.field)}</td><td class="num">${esc(e.old_value)} → <b>${esc(e.new_value)}</b></td></tr>`).join('')}</tbody>
+    </table></div><div class="small more">Showing ${Math.min(60,recent.length)} of ${recent.length}. Full history in the change log.</div>` : '<p class="empty">No changes yet.</p>'}
+  </section>
+
+  <footer>Data: <code>audit/tracker.csv</code> and <code>audit/changelog.csv</code> in this repository, read live each time the page loads. Grades follow the CSSNY 17-criterion HFAL rubric.</footer>`;
+
+  // needs-check table with filters
+  const needs = rows.filter(r => r.missing.length).sort((a,b) => b.missing.length - a.missing.length || a.A.localeCompare(b.A));
+  let filt = 'all';
+  const body = document.getElementById('hbody'), search = document.getElementById('hsearch');
+  function draw(){
+    const q = search.value.trim().toLowerCase();
+    const list = needs.filter(r => (filt === 'all' || r.reason === filt) && (!q || (r.A + ' ' + r.M).toLowerCase().includes(q)));
+    body.innerHTML = list.map(r => `<tr>
+      <td><a href="${esc(r.N)}" target="_blank" rel="noopener">${esc(r.A)}</a></td>
+      <td>${esc(r.M)}</td>
+      <td title="${esc(r.missing.map(c => FIELD[c]).join(', '))}"><b>${r.missing.length}</b> <span class="small">of ${GRADED.length}</span><div class="small">${esc(trim(r.missing.map(c=>FIELD[c]).join(', '), 90))}</div></td>
+      <td>${esc(REASONS[r.reason].label)}</td>
+      <td class="num">${fmtDate(r.BA)}</td>
+      <td>${gradePill(r)}</td></tr>`).join('') || '<tr><td colspan="6" class="empty">No hospitals match.</td></tr>';
+    document.getElementById('hcount').textContent = `${list.length} of ${needs.length} hospitals`;
+  }
+  document.getElementById('hfilters').addEventListener('click', e => {
+    const b = e.target.closest('.chip'); if (!b) return;
+    filt = b.dataset.r;
+    document.querySelectorAll('#hfilters .chip').forEach(c => c.setAttribute('aria-pressed', c === b));
+    draw();
+  });
+  search.addEventListener('input', draw);
+  draw();
+}
+
+function trim(s, n){ s = String(s||'').replace(/\s+/g,' ').trim(); return s.length > n ? s.slice(0, n-1) + '…' : s; }
+function gradePill(r){
+  if (r.missing.length >= 13) return '<span class="pill p-warn" title="Too little data to grade">No data</span>';
+  const g = r.O || '?', prov = r.missing.length > 0;
+  const cls = g === 'A' || g === 'B' ? 'p-good' : g === 'C' || g === 'D' ? 'p-warn' : 'p-bad';
+  return `<span class="pill ${cls}" title="${prov ? 'Provisional: blank fields are not counted' : 'Final'}">${esc(g)}${prov ? '*' : ''}</span>`;
+}
+
+Promise.all([load('audit/tracker.csv'), load('audit/changelog.csv')])
+  .then(([rows, log]) => render(rows, log))
+  .catch(err => {
+    document.getElementById('asof').textContent = '';
+    document.getElementById('app').innerHTML = `<section><div class="err">Couldn't load the tracker data (${esc(err.message)}). This page reads <code>audit/tracker.csv</code> from the same site, so open it through GitHub Pages or a local web server rather than as a file.</div></section>`;
+  });
+</script>
+</body>
+</html>
