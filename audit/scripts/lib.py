@@ -43,7 +43,7 @@ CSV_FIELDS = ['hospital_id'] + [f'{k} {v}' for k, v in COLUMNS.items()]
 
 
 def hospital_id(ocn_pfi, name):
-    """Same convention as src/seed.py: OCN_PFI, or a deterministic UNRESOLVED id."""
+    """OCN_PFI, or a deterministic UNRESOLVED id (same convention as bguzell/h-compliance-tracker src/seed.py)."""
     if ocn_pfi:
         return str(ocn_pfi).strip()
     return 'UNRESOLVED-' + hashlib.sha256(str(name).strip().encode()).hexdigest()[:12]

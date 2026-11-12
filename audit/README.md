@@ -1,6 +1,6 @@
 # HFAL audit layer (agent-maintained, version-controlled)
 
-A version-controlled copy of the CSSNY Hospital Financial Assistance compliance tracker. A scheduled Claude agent keeps it current: each run re-checks the hospitals checked least recently, grades them against the 17-criterion rubric, and commits whatever changed. This folder is separate from the Python app in the repo root (`src/`, SQLite, Streamlit) and doesn't touch it.
+A version-controlled copy of the CSSNY Hospital Financial Assistance compliance tracker. A scheduled Claude agent keeps it current: each run re-checks the hospitals checked least recently, grades them against the 17-criterion rubric, and commits whatever changed.
 
 ## Files
 | Path | What it is |
