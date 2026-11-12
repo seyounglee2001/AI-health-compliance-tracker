@@ -94,6 +94,25 @@ dialog::backdrop{background:rgba(20,20,18,.45)}
 .notes dd{margin:2px 0 0;color:var(--muted);font-size:13px;white-space:pre-wrap;word-break:break-word}
 .p-none{background:var(--chip);color:var(--muted)}
 .chg{font-size:11.5px;color:var(--warn);font-weight:600;margin-left:6px}
+.btn{border:1px solid var(--accent);background:var(--accent);color:#fff;border-radius:8px;padding:7px 14px;font:inherit;font-size:14px;font-weight:600;cursor:pointer}
+.btn.ghost{background:none;color:var(--accent)}
+.btn.sm{padding:3px 10px;font-size:12.5px;font-weight:600}
+.actions{display:flex;flex-wrap:wrap;gap:8px;margin:4px 0 14px}
+.form .frow{display:grid;grid-template-columns:1fr 150px;gap:6px 14px;padding:10px 0;border-bottom:1px solid var(--line);align-items:start}
+.form .frow:last-of-type{border-bottom:none}
+.form label{font-weight:600;font-size:14px}
+.form .help{color:var(--muted);font-size:12.5px;margin-top:2px}
+.form .cur{font-size:12px;color:var(--muted);margin-top:4px}
+.form select,.form input,.form textarea{width:100%;border:1px solid var(--line);background:var(--bg);color:var(--ink);border-radius:8px;padding:6px 8px;font:inherit;font-size:14px}
+.form select.set,.form input.set{border-color:var(--accent);background:var(--card)}
+.form textarea{min-height:76px;resize:vertical}
+.form .block{margin-top:14px}
+.form .block label{display:block;margin-bottom:4px}
+.form .msg{margin-top:10px;font-size:13.5px}
+.form .msg.err{color:var(--bad)}
+.okbox{background:var(--good-bg);color:var(--ink);border-radius:10px;padding:14px 16px;font-size:14px}
+.okbox ol{margin:8px 0 0;padding-left:20px}
+@media (max-width:560px){.form .frow{grid-template-columns:1fr}}
 </style>
 </head>
 <body>
@@ -126,6 +145,27 @@ const FIELD = {R:'Application posted',S:'Policy summary posted',T:'Policy statem
   AE:'Contact info in application',AG:'Income & discount tables',AH:'Current-year FPL',AI:'Max FPL ≥ 400%',
   AJ:'Installments capped at 5%',AL:'Service area in summary',AM:'How to apply explained',AN:'Income levels in summary'};
 const STALE_DAYS = 14;
+const REPO = 'seyounglee2001/AI-health-compliance-tracker';
+const VERSION = '2026-11-12.3';
+let CFG = {fpl_year: 2026, fpl_100pct_48_states: {'1': 15960}};
+const HELP = {
+  R:'Any financial assistance application is posted.',
+  S:'A plain-language summary is posted (as a PDF or on the page).',
+  T:'The full financial assistance policy is posted. Missing = automatic F.',
+  U:"All posted documents agree (FPL limits, tiers, deadlines, service area). Choose no if any of them conflict.",
+  V:"The service area covers at least the hospital's county plus every neighboring NY county (all of NYS or no restriction also counts). Choose no if it's narrower, or not defined anywhere.",
+  W:'Yes if there is no deadline to apply. No if any document sets one (e.g. 240 days). "Encouraged to apply within…" is not a deadline.',
+  Y:'No if assets are considered, or asset information or bank statements are requested.',
+  Z:'No if immigration status can block or limit eligibility.',
+  AD:'The application is the complete NYS DOH Uniform Hospital Financial Assistance Form. A partial or hospital-made form is no. No = automatic F.',
+  AE:'The application includes contact information.',
+  AG:'The application includes income and discount tables.',
+  AH:'', AI:'The highest income the application covers, as a % of the federal poverty level (e.g. 400). Below 400 is non-compliant.',
+  AJ:'The application states that payment plans are capped at 5% of monthly income.',
+  AL:'The plain-language summary describes the service area.',
+  AM:'The summary explains how to apply.',
+  AN:'The summary lists the income levels used (FPL % or dollar amounts).'
+};
 const REASONS = {
   blocked:{label:'Site or links blocked',help:'The hospital page or its file host refuses automated tools, or the document links could not be found.'},
   docx:{label:'Word (.docx) document',help:'Posted only as a Word file, which the agent cannot read.'},
@@ -251,14 +291,14 @@ function render(rows, log){
 
   <section>
     <h2>Needs a human check</h2>
-    <p class="sub">Open the hospital's page in a browser, read the linked documents, and fill in the blank fields. Sorted by most missing.</p>
+    <p class="sub">Open the hospital's page (↗), read the linked documents, then click <b>Enter data</b> to fill in the blank fields. Entries are saved to GitHub. Sorted by most missing.</p>
     <div class="tools" id="hfilters">
       <input type="search" id="hsearch" placeholder="Search hospital or system">
       <button class="chip" data-r="all" aria-pressed="true">All</button>
       ${Object.entries(REASONS).map(([k,v]) => `<button class="chip" data-r="${k}" aria-pressed="false">${v.label}</button>`).join('')}
     </div>
     <div class="tablewrap scroll"><table>
-      <thead><tr><th>Hospital</th><th>System</th><th>Blank fields</th><th>Cause</th><th>Last checked</th><th>Grade</th></tr></thead>
+      <thead><tr><th>Hospital</th><th>System</th><th>Blank fields</th><th>Cause</th><th>Last checked</th><th>Grade</th><th></th></tr></thead>
       <tbody id="hbody"></tbody>
     </table></div>
     <div class="small more" id="hcount"></div>
@@ -301,7 +341,7 @@ function render(rows, log){
     </table></div><div class="small more">Showing ${Math.min(60,recent.length)} of ${recent.length}. Full history in the change log.</div>` : '<p class="empty">No changes yet.</p>'}
   </section>
 
-  <footer>Data: <code>audit/tracker.csv</code> and <code>audit/changelog.csv</code> in this repository, read live each time the page loads. Grades follow the CSSNY 17-criterion HFAL rubric.</footer>`;
+  <footer>Data: <code>audit/tracker.csv</code> and <code>audit/changelog.csv</code> in this repository, read live each time the page loads. Grades follow the CSSNY 17-criterion HFAL rubric. · Dashboard version ${VERSION}</footer>`;
 
   // needs-check table with filters
   const needs = rows.filter(r => r.missing.length).sort((a,b) => b.missing.length - a.missing.length || a.A.localeCompare(b.A));
@@ -316,7 +356,8 @@ function render(rows, log){
       <td title="${esc(r.missing.map(c => FIELD[c]).join(', '))}"><b>${r.missing.length}</b> <span class="small">of ${GRADED.length}</span><div class="small">${esc(trim(r.missing.map(c=>FIELD[c]).join(', '), 90))}</div></td>
       <td>${esc(REASONS[r.reason].label)}</td>
       <td class="num">${fmtDate(r.BA)}</td>
-      <td>${gradePill(r)}</td></tr>`).join('') || '<tr><td colspan="6" class="empty">No hospitals match.</td></tr>';
+      <td>${gradePill(r)}</td>
+      <td><button class="btn sm" data-enter="${esc(r.hospital_id)}">Enter data</button></td></tr>`).join('') || '<tr><td colspan="7" class="empty">No hospitals match.</td></tr>';
     document.getElementById('hcount').textContent = `${list.length} of ${needs.length} hospitals`;
   }
   document.getElementById('hfilters').addEventListener('click', e => {
@@ -352,7 +393,7 @@ function show(title, sub, html, back){
 function openDrill(key){
   const d = DRILL[key]; if (!d) return;
   const html = d.rows.length ? `<div class="tablewrap"><table>
-    <thead><tr><th>Hospital</th><th>Grade</th><th>Blank fields</th><th>Cause</th><th>Last checked</th><th>Last updated</th>${d.note?'<th>Agent note</th>':''}</tr></thead>
+    <thead><tr><th>Hospital</th><th>Grade</th><th>Blank fields</th><th>Cause</th><th>Last checked</th><th>Last updated</th>${d.note?'<th>Agent note</th>':''}<th></th></tr></thead>
     <tbody>${d.rows.map(r => `<tr>
       <td>${hosp(r)}<div class="small">${esc(r.M)}</div></td>
       <td>${gradePill(r)}</td>
@@ -360,15 +401,18 @@ function openDrill(key){
       <td>${r.reason ? esc(REASONS[r.reason].label) : '<span class="small">—</span>'}</td>
       <td class="num">${fmtDate(r.BA)}</td>
       <td class="num">${fmtDate(r.AZ)}</td>
-      ${d.note ? `<td class="note">${esc(trim(r.AT,260))}</td>` : ''}</tr>`).join('')}</tbody></table></div>
+      ${d.note ? `<td class="note">${esc(trim(r.AT,260))}</td>` : ''}
+      <td><button class="btn sm ${r.missing.length ? '' : 'ghost'}" data-enter="${esc(r.hospital_id)}">${r.missing.length ? 'Enter data' : 'Correct'}</button></td></tr>`).join('')}</tbody></table></div>
     <p class="small more">${d.rows.length} hospital${d.rows.length===1?'':'s'}. Click a name for full details, or ↗ to open its financial assistance page.</p>`
     : '<p class="empty">No hospitals in this group.</p>';
   show(d.title, d.sub, html);
   dlg().dataset.key = key;
+  dlg().dataset.view = 'drill';
 }
-function openHosp(id){
+function openHosp(id, fromOverride){
   const r = byId[id]; if (!r) return;
-  const from = !dlg().open ? null : (backTo || dlg().dataset.key || null);
+  const view = dlg().open ? dlg().dataset.view : null;
+  const from = fromOverride !== undefined ? fromOverride : view === 'drill' ? dlg().dataset.key : view === 'hosp' ? backTo : null;
   const changed = new Set((r.AW||'').split('; ').map(x => x.split(' ')[0]));
   const val = (c) => {
     let v = r[c] || '';
@@ -386,7 +430,10 @@ function openHosp(id){
       <div>Previous grade<b>${esc(r.AR||'—')}</b></div>
     </div>
     ${r.missing.length ? `<p class="small">Why fields are blank: <b>${esc(REASONS[r.reason].label)}</b> — ${esc(REASONS[r.reason].help)}</p>` : ''}
-    <p class="small">${r.N ? `<a href="${esc(r.N)}" target="_blank" rel="noopener">Open the financial assistance page ↗</a>` : ''}</p>
+    <div class="actions">
+      ${r.N ? `<a class="btn ghost" href="${esc(r.N)}" target="_blank" rel="noopener">Open financial assistance page ↗</a>` : ''}
+      <button class="btn" data-enter="${esc(r.hospital_id)}">${r.missing.length ? `Enter missing data (${r.missing.length})` : 'Correct a value'}</button>
+    </div>
     <div class="tablewrap"><table>
       <thead><tr><th>Field</th><th>Value</th></tr></thead>
       <tbody>${GRADED.map(c => `<tr><td>${esc(FIELD[c])} <span class="small">(${c})</span>${changed.has(c) && r.AZ ? `<span class="chg">changed ${fmtDate(r.AZ)}</span>` : ''}</td><td>${val(c)}</td></tr>`).join('')}</tbody>
@@ -395,8 +442,85 @@ function openHosp(id){
       ${sources.length ? `<dt>Sources read at last check</dt><dd>${sources.map(u => /^https?:/.test(u) ? `<a href="${esc(u.split(' ')[0])}" target="_blank" rel="noopener">${esc(u)}</a>` : esc(u)).join('<br>')}</dd>` : ''}
     </dl>`;
   show(r.A, r.M, html, from);
+  dlg().dataset.view = 'hosp';
 }
+// ---------- manual data entry ----------
+function curVal(r, c){
+  const v = r[c] || '';
+  if (!v) return 'not verified';
+  if (c === 'AI') return v === 'no' ? 'below 400%' : Math.round(parseFloat(v)*100) + '%';
+  return v;
+}
+function fieldRow(r, c){
+  const help = c === 'AH'
+    ? `The application uses ${esc(CFG.fpl_year)} federal poverty guidelines (1 person at 100% FPL = $${Number((CFG.fpl_100pct_48_states||{})['1']||0).toLocaleString()}). Older figures, or none, = no.`
+    : esc(HELP[c]);
+  const input = c === 'AI'
+    ? `<input type="number" min="1" max="2000" step="1" inputmode="numeric" name="${c}" placeholder="e.g. 400" aria-label="${esc(FIELD[c])} percent">`
+    : `<select name="${c}" aria-label="${esc(FIELD[c])}"><option value="">— leave as is</option><option value="yes">yes</option><option value="no">no</option></select>`;
+  return `<div class="frow"><div><label>${esc(FIELD[c])} <span class="small">(${c})</span></label>
+    <div class="help">${help}</div><div class="cur">Currently: <b>${esc(curVal(r,c))}</b></div></div><div>${input}</div></div>`;
+}
+function openForm(id, showAll){
+  const r = byId[id]; if (!r) return;
+  const view = dlg().open ? dlg().dataset.view : null;
+  const hospFrom = view === 'hosp' ? backTo : view === 'drill' ? dlg().dataset.key : view === 'form' ? (backTo||{}).from ?? null : null;
+  const fields = showAll || !r.missing.length ? GRADED : r.missing;
+  const html = `<form class="form" id="entryform" novalidate>
+    <p class="small" style="margin-top:0">${r.missing.length ? `${r.missing.length} field${r.missing.length===1?' is':'s are'} blank because the agent couldn't read the documents.` : 'All fields have values. Use this to correct one.'}
+      Open the hospital's ${r.N ? `<a href="${esc(r.N)}" target="_blank" rel="noopener">financial assistance page ↗</a>` : 'financial assistance page'}, read the linked policy, application and summary, then fill in what you can verify. Leave anything you can't tell as “leave as is”.</p>
+    ${fields.map(c => fieldRow(r, c)).join('')}
+    ${!showAll && r.missing.length && r.missing.length < GRADED.length ? `<p class="small"><button type="button" class="link" id="showall">Also show fields that already have a value</button></p>` : ''}
+    <div class="block"><label for="evidence">Evidence <span class="small">(required)</span></label>
+      <textarea id="evidence" name="evidence" placeholder="Where you found each value. Quote the document where you can, e.g. Policy p.3: &quot;Applications may be submitted at any time.&quot;"></textarea></div>
+    <div class="block"><label for="sources">Document links <span class="small">(one per line)</span></label>
+      <textarea id="sources" name="sources" style="min-height:52px" placeholder="https://…/financial-assistance-policy.pdf"></textarea></div>
+    <div class="block actions"><button class="btn" type="submit">Submit to GitHub</button>
+      <span class="small" style="align-self:center">Opens GitHub with your entry filled in. You need a GitHub account with collaborator access to this repository.</span></div>
+    <div class="msg" id="formmsg" role="status"></div>
+  </form>`;
+  show(`Enter data: ${r.A}`, r.M, html, {hosp:id, from:hospFrom});
+  dlg().dataset.view = 'form';
+  const form = document.getElementById('entryform');
+  form.addEventListener('change', e => e.target.classList.toggle('set', !!e.target.value));
+  const sa = document.getElementById('showall'); if (sa) sa.addEventListener('click', () => openForm(id, true));
+  form.addEventListener('submit', e => { e.preventDefault(); submitEntry(r, form); });
+}
+function submitEntry(r, form){
+  const msg = document.getElementById('formmsg');
+  const fields = {};
+  form.querySelectorAll('select[name], input[name]').forEach(el => {
+    if (!el.value) return;
+    fields[el.name] = el.name === 'AI' ? Number(el.value) : el.value;
+  });
+  const evidence = form.evidence.value.trim();
+  const sources = form.sources.value.split(/\s+/).map(s => s.trim()).filter(s => /^https?:\/\//.test(s));
+  const problems = [];
+  if (!Object.keys(fields).length) problems.push('Fill in at least one field.');
+  if ('AI' in fields && !(fields.AI > 0 && fields.AI <= 2000)) problems.push('Max FPL should be a percent like 400.');
+  if (evidence.length < 10) problems.push('Add evidence: where you found the values.');
+  const unchanged = Object.entries(fields).filter(([c,v]) => (c === 'AI' ? (v >= 400 ? String(v/100) : 'no') : v) === (r[c]||'').replace(/\.0+$/,''));
+  if (unchanged.length && unchanged.length === Object.keys(fields).length) problems.push('Every value you entered matches what is already recorded.');
+  if (problems.length) { msg.className = 'msg err'; msg.textContent = problems.join(' '); return; }
+
+  const entry = {hospital_id: r.hospital_id, fields, evidence, sources};
+  const table = Object.entries(fields).map(([c,v]) => `| ${FIELD[c]} (${c}) | ${curVal(r,c)} | **${c === 'AI' ? v + '%' : v}** |`).join('\n');
+  const body = `**Hospital:** ${r.A}\n**System:** ${r.M}\n**Financial assistance page:** ${r.N || 'n/a'}\n\n` +
+    `| Field | Currently | New value |\n|---|---|---|\n${table}\n\n**Evidence:** ${evidence}\n\n` +
+    (sources.length ? `**Documents:**\n${sources.map(s => '- ' + s).join('\n')}\n\n` : '') +
+    `Submit this issue to apply the entry. A workflow updates the tracker and closes the issue within about a minute.\n\n` +
+    `<!-- Do not edit the block below: the tracker reads it. -->\n\`\`\`json\n${JSON.stringify(entry)}\n\`\`\`\n`;
+  const url = `https://github.com/${REPO}/issues/new?title=${encodeURIComponent('[Data entry] ' + r.A)}&body=${encodeURIComponent(body)}`;
+  window.open(url, '_blank', 'noopener');
+  document.getElementById('dbody').innerHTML = `<div class="okbox"><b>GitHub opened in a new tab with your entry filled in.</b>
+    <ol><li>Check the values and click <b>Create</b> (or “Submit new issue”).</li>
+    <li>A workflow applies it to the tracker, comments on the issue, and closes it, usually within a minute.</li>
+    <li>Reload this page a few minutes later to see the update.</li></ol>
+    <p class="small" style="margin-bottom:0">Didn't open? <a href="${esc(url)}" target="_blank" rel="noopener">Open the pre-filled issue</a>. You can follow the status on the <a href="https://github.com/${REPO}/issues?q=is%3Aissue+%22%5BData+entry%5D%22" target="_blank" rel="noopener">data entry issues</a> page.</p></div>`;
+}
+
 document.addEventListener('click', e => {
+  const en = e.target.closest('[data-enter]'); if (en) { openForm(en.dataset.enter); return; }
   const h = e.target.closest('[data-hosp]'); if (h) { openHosp(h.dataset.hosp); return; }
   const d = e.target.closest('[data-drill]'); if (d) openDrill(d.dataset.drill);
 });
@@ -404,7 +528,11 @@ document.addEventListener('keydown', e => {
   if ((e.key === 'Enter' || e.key === ' ') && e.target.matches('tr[data-drill]')) { e.preventDefault(); openDrill(e.target.dataset.drill); }
 });
 document.getElementById('dclose').addEventListener('click', () => dlg().close());
-document.getElementById('dback').addEventListener('click', () => backTo && openDrill(backTo));
+document.getElementById('dback').addEventListener('click', () => {
+  if (backTo && typeof backTo === 'object') openHosp(backTo.hosp, backTo.from ?? null);
+  else if (backTo) openDrill(backTo);
+});
+dlg().addEventListener('close', () => { dlg().dataset.view = ''; backTo = null; });
 dlg().addEventListener('click', e => { if (e.target === dlg()) dlg().close(); });
 
 function trim(s, n){ s = String(s||'').replace(/\s+/g,' ').trim(); return s.length > n ? s.slice(0, n-1) + '…' : s; }
@@ -415,7 +543,8 @@ function gradePill(r){
   return `<span class="pill ${cls}" title="${prov ? 'Provisional: blank fields are not counted' : 'Final'}">${esc(g)}${prov ? '*' : ''}</span>`;
 }
 
-Promise.all([load('audit/tracker.csv'), load('audit/changelog.csv')])
+fetch('audit/config.json',{cache:'no-store'}).then(r => r.ok ? r.json() : null).then(c => { if (c) CFG = c; }).catch(() => {})
+  .then(() => Promise.all([load('audit/tracker.csv'), load('audit/changelog.csv')]))
   .then(([rows, log]) => render(rows, log))
   .catch(err => {
     document.getElementById('asof').textContent = '';

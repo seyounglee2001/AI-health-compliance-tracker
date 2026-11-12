@@ -1,0 +1,74 @@
+name: Apply manual data entry
+
+# Runs when someone submits missing data from the dashboard (it opens a pre-filled GitHub issue).
+on:
+  issues:
+    types: [opened]
+
+permissions:
+  contents: write
+  issues: write
+
+concurrency:
+  group: tracker-writes
+  cancel-in-progress: false
+
+jobs:
+  apply:
+    if: startsWith(github.event.issue.title, '[Data entry]')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Only repo collaborators can change the data
+        if: ${{ !contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.issue.author_association) }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ISSUE: ${{ github.event.issue.number }}
+          AUTHOR: ${{ github.event.issue.user.login }}
+        run: |
+          gh issue comment "$ISSUE" --repo "$GITHUB_REPOSITORY" --body "Thanks @$AUTHOR. Only collaborators on this repository can update the tracker, so this entry was not applied. A maintainer can add you under Settings → Collaborators, or copy these values in themselves."
+          gh issue edit "$ISSUE" --repo "$GITHUB_REPOSITORY" --add-label "needs-review" || true
+          exit 1
+
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - run: pip install openpyxl
+
+      - name: Apply entry
+        id: apply
+        env:
+          BODY: ${{ github.event.issue.body }}
+          AUTHOR: ${{ github.event.issue.user.login }}
+          ISSUE: ${{ github.event.issue.number }}
+        run: |
+          printf '%s' "$BODY" > "$RUNNER_TEMP/issue.md"
+          TZ=America/New_York python audit/scripts/apply_manual.py --body-file "$RUNNER_TEMP/issue.md" --author "$AUTHOR" --issue "$ISSUE" --date "$(TZ=America/New_York date +%F)"
+          python audit/scripts/build_xlsx.py
+
+      - name: Commit and push
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add audit/tracker.csv audit/changelog.csv audit/runs audit/exports
+          git commit -F audit/work/summary.md
+          for i in 1 2 3; do git pull --rebase origin main && git push origin HEAD:main && break; sleep 5; done
+
+      - name: Report success
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ISSUE: ${{ github.event.issue.number }}
+        run: |
+          gh issue comment "$ISSUE" --repo "$GITHUB_REPOSITORY" --body-file audit/work/comment.md
+          gh issue close "$ISSUE" --repo "$GITHUB_REPOSITORY" --reason completed
+
+      - name: Report problem
+        if: failure() && steps.apply.outcome == 'failure'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ISSUE: ${{ github.event.issue.number }}
+        run: |
+          { echo "⚠️ This entry could not be applied:"; echo; cat audit/work/error.md 2>/dev/null || echo "See the workflow log."; echo; echo "Fix the values from the dashboard and submit again."; } > "$RUNNER_TEMP/err.md"
+          gh issue comment "$ISSUE" --repo "$GITHUB_REPOSITORY" --body-file "$RUNNER_TEMP/err.md"

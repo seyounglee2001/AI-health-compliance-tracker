@@ -48,6 +48,14 @@ def fmt_ai(v):
         return norm(v) or '(blank)'
 
 
+# Fields whose current value was entered by a person (latest real change came from a manual entry).
+# If the agent can't read the document this run, it keeps the human value instead of blanking it.
+manual = {}
+if CHANGELOG.exists():
+    for e in csv.DictReader(CHANGELOG.open(encoding='utf-8')):
+        if e['new_value'] != '(blank)':
+            manual[(e['hospital_id'], e['column'])] = '-manual' in e['run_id']
+
 log, summary = [], []
 for d in results:
     row = by_id[d['hospital_id']]
@@ -59,9 +67,16 @@ for d in results:
     else:
         m = float(m)
         new['AI'] = (f'{m / 100:g}' if m >= 400 else 'no')
+    kept = [c for c in GRADED if new[c] == '' and norm(row[c]) != '' and manual.get((row['hospital_id'], c))]
+    for c in kept:
+        new[c] = norm(row[c])
     unverified = {str(u).strip().upper() for u in (d.get('unverified') or [])}
     unverified = {'AI' if u in ('MAX_FPL_PERCENT', 'MAX FPL') else u for u in unverified}
+    unverified -= set(kept)
     unverified |= {c for c in GRADED if new[c] == ''}
+    if kept:
+        d['changes_vs_previous'] = ((d.get('changes_vs_previous') or '') +
+                                    f" | Kept human-entered values for {', '.join(kept)} (source not readable this run).").strip(' |')
 
     changes = []
     for c in GRADED:

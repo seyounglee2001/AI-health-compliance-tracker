@@ -12,7 +12,19 @@ A version-controlled copy of the CSSNY Hospital Financial Assistance compliance 
 | `config.json` | Current FPL year and table, and how many systems each run covers |
 | `AUDIT_INSTRUCTIONS.md` | Grading rules the agent follows |
 | `RUN_PROCEDURE.md` | Step-by-step for each scheduled run |
-| `scripts/` | `select_batch.py` → (agent audits) → `apply_results.py` → `build_xlsx.py` |
+| `scripts/` | `select_batch.py` → (agent audits) → `apply_results.py` → `build_xlsx.py`; `apply_manual.py` for human entries |
+
+## Entering missing data by hand
+When the agent can't read a hospital's documents (blocked site, Word file, scan), a person can fill in the blanks:
+
+1. On the [dashboard](https://seyounglee2001.github.io/AI-health-compliance-tracker/), click **Enter data** next to a hospital. The button is in the "Needs a human check" table, in any drill-down list, or on a hospital's detail view.
+2. Choose yes or no for each field you verified, and enter Max FPL as a percent. Add evidence (required) and links to the documents.
+3. **Submit to GitHub** opens a pre-filled issue titled `[Data entry] <hospital>`. Click **Create**.
+4. `.github/workflows/manual-entry.yml` runs `scripts/apply_manual.py`. It updates `tracker.csv`, logs each change in `changelog.csv` (run id `<date>-manual-issue<n>`, with the author and evidence), recalculates the grade, rebuilds the spreadsheet, commits, comments on the issue and closes it.
+
+- **Who can submit:** only repository collaborators (owner, members, invited collaborators) can change data. Entries from anyone else get a comment and are not applied.
+- **Bad entries:** invalid entries get a comment explaining what to fix.
+- **The agent keeps human values:** if a later run can't read the source document, it keeps the human-entered value instead of blanking it. If it *can* read the document and finds something different, it records the new value in the changelog like any other change.
 
 ## Dates
 - **Last Updated:** the last date any graded field for that hospital changed. It moves only when the data changes.
